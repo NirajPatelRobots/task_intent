@@ -4,7 +4,6 @@ Created Feb 2022
 
 @author: Niraj
 #TODO:
-    clean old tasks
     due date
     recurring tasks
     server controllable from phone
@@ -13,7 +12,7 @@ Created Feb 2022
 """
 import pickle
 from os.path import exists
-from datetime import datetime
+from datetime import datetime, timedelta
 
 class Task:
     def __init__(self, name, parentlists, desc=None, duedate=None, recurring = False):
@@ -73,11 +72,10 @@ class Tasklist:
             print(i, self[i].__str__())
             
     def clean(self, expire_hours = 12):
-        #BUG 'datetime.datetime' has no attribute 'timedelta'
-        cleandate = datetime.now() - datetime.timedelta(hours=-expire_hours)
+        cleandate = datetime.now() - timedelta(hours=-expire_hours)
         i = 0
         while i < len(self):
-            if not self[i].done and self[i].done < cleandate:
+            if self[i].done and self[i].done < cleandate:
                 self.removetask(self[i])
             else:
                 i += 1
@@ -122,60 +120,70 @@ todo = Tasklist("todo", parent = alltasks)
 hard = Tasklist("hard", parent = alltasks)
 fun = Tasklist("fun", parent = alltasks)
 lists = {"today": today, "todo": todo, "alltasks": alltasks, "hard": hard, "fun": fun}
-thistask = None
-thislist = alltasks
 
-while True:
-    args = input(">>> ").split()
-    command = args[0] if len(args) > 0 else "" #command is first, the rest of the args are available if needed
-    command = command.strip().lower()
-    if command == "":
-        continue
-    elif command.startswith("exit"):
-        break
-    elif command in lists:
-        thislist = lists[command]
-        thislist.print()
-    elif command == "new":
-        name = input("name: ") #TODO multiple add
-        thistask = Task(name, [alltasks])
-        for i in range(1, len(args)):
-            try:
-                lists[args[i]].addtask(thistask)
-            except KeyError:
-                print("No list named", args[i])
-    elif command == "task":
-        if len(args) > 1: #pick from list
-            try:
-                thistask = thislist[int(args[1])]
-            except:
-                print("what is", args[1])
-        if thistask is None:
-            print("None")
-        else:
-            print(thistask, "in", list(thistask.lists))
-    elif command == "add":
-        for i in range(1, len(args)):
-            try:
-                lists[args[i]].addtask(thistask)
-            except KeyError:
-                print("No list named", args[i])
-    elif command == "done":
-        thistask.done = datetime.now()
-    elif command == "clean":
-        for l in lists.values():
-            l.clean()
-    elif command == "due":
-        #TODO
-        pass
-    elif command == "remove":
-        print(thistask)
-        if len(args) > 1:
-            removelist = [lists[l] for l in args[1:] if l in lists]
-        else:
-            removelist = thistask.lists.values()
-        for l in removelist:
-            if l.removetask(thistask):
-                print("REMOVED from", l.name)
-    alltasks.save()
+def main():
+    thistask = None
+    thislist = alltasks
+    
+    while True:
+        args = input(">>> ").split()
+        command = args[0] if len(args) > 0 else "" #command is first, the rest of the args are available if needed
+        command = command.strip().lower()
+        if command == "":
+            continue
+        elif command.startswith("exit"):
+            break
+        elif command in lists:
+            thislist = lists[command]
+            thislist.print()
+        elif command == "new":
+            name = input("name: ") #TODO multiple add
+            thistask = Task(name, [alltasks])
+            for i in range(1, len(args)):
+                try:
+                    lists[args[i]].addtask(thistask)
+                except KeyError:
+                    print("No list named", args[i])
+        elif command == "task":
+            if len(args) > 1: #pick from list
+                try:
+                    thistask = thislist[int(args[1])]
+                except:
+                    print("what is", args[1])
+            if thistask is None:
+                print("None")
+            else:
+                print(thistask, "in", list(thistask.lists))
+        elif command == "add":
+            for i in range(1, len(args)):
+                try:
+                    lists[args[i]].addtask(thistask)
+                except KeyError:
+                    print("No list named", args[i])
+        elif command == "done":
+            thistask.done = datetime.now()
+        elif command == "undone":
+            thistask.done = False
+        elif command == "clean":
+            if len(args) > 1 and args[1] == "all":
+                for l in lists.values():
+                    l.clean(expire_hours=0)
+            else:
+                for l in lists.values():
+                    l.clean()
+        elif command == "due":
+            #TODO
+            pass
+        elif command == "remove":
+            print(thistask)
+            if len(args) > 1:
+                removelist = [lists[l] for l in args[1:] if l in lists]
+            else:
+                removelist = list(thistask.lists.values())
+            for l in removelist:
+                if l.removetask(thistask):
+                    print("REMOVED from", l.name)
+        alltasks.save()
 
+if __name__ == '__main__':
+    main()
