@@ -41,6 +41,7 @@ class Tasklist:
         loaded_list is the list of tasks loaded from a saved pickle file"""
         self.name = name
         self.tasks = []
+        self.parent = parent
         if loaded_list is not None:
             for task in loaded_list:
                 newtask = Task(task.name, [], desc=task.desc, duedate=task.duedate, recurring = task.recurring)
@@ -54,16 +55,22 @@ class Tasklist:
     
     def newtask(self, name, desc = None, duedate = None, recurring = False):
         self.addtask(Task(name, [self], desc, duedate, recurring))
+        self.save()
     
     def addtask(self, task):
         if not task in self.tasks:
             self.tasks.append(task)
             task.lists[self.name] = self
+            if self.parent is not None:
+                self.parent.addtask(task)
+            else:
+                self.save()
     
     def removetask(self, task):
         if task in self.tasks:
             self.tasks.remove(task)
             del task.lists[self.name]
+            self.save()
             return True
         return False
     
@@ -79,6 +86,7 @@ class Tasklist:
                 self.removetask(self[i])
             else:
                 i += 1
+        self.save()
 
     @staticmethod
     def load(name):
@@ -90,8 +98,11 @@ class Tasklist:
             return None
     
     def save(self):
-        with open(self.name + ".tasklist", "wb") as file:
-            pickle.dump(self.tasks, file)
+        if self.parent is None:
+            with open(self.name + ".tasklist", "wb") as file:
+                pickle.dump(self.tasks, file)
+        else:
+            self.parent.save()
     
     def __getitem__(self, key):
         return self.tasks[key]
@@ -106,84 +117,111 @@ class Tasklist:
             return self[self._index - 1]
         raise StopIteration
 
+def loadSavedLists():
+    lists = {}
+    if not exists("settings.settings"):
+        ret = input("No saved settings were found. Create new default one and erase saved lists y/n? ").lower()
+        if ret == "y":
+            with open("settings.settings", 'w') as settings:
+                settings.write("list alltasks \n" + "list todo parent alltasks \n\n" +"list shopping\n")
+            lists["alltasks"] = Tasklist("alltasks")
+            lists["shopping"] = Tasklist("shopping")
+        return lists
+    with open("settings.settings") as settings:
+        for line in settings:
+            words = line.split()
+            if len(words) > 1 and words[0] == "list":
+                newname = words[1]
+                if len(words) > 3 and words[2] == "parent":
+                    parentname = words[3]
+                    if not parentname in lists:
+                        print("Load error: list", newname, "has parent", parentname, "which was not found")
+                    else:
+                        lists[newname] = Tasklist(newname, lists[parentname])
+                else:
+                    lists[newname] = Tasklist.load(newname)
+                    if lists[newname] is None:
+                        print("Load error: Couldn't find saved list", newname)
+    return lists
 
-#load saved data
-alltasks = Tasklist.load("alltasks")
-if alltasks is None:
-    ret = input("No saved alltasks list was found. Create blank one y/n? ").lower()
-    if ret == "y":
-        alltasks = Tasklist("alltasks")
-else:
-    print("Tracking", len(alltasks))
-today = Tasklist("today", parent = alltasks)
-todo = Tasklist("todo", parent = alltasks)
-hard = Tasklist("hard", parent = alltasks)
-fun = Tasklist("fun", parent = alltasks)
-lists = {"today": today, "todo": todo, "alltasks": alltasks, "hard": hard, "fun": fun}
 
-def main():
-    thistask = None
-    thislist = alltasks
-    
-    while True:
-        args = input(">>> ").split()
-        command = args[0] if len(args) > 0 else "" #command is first, the rest of the args are available if needed
-        command = command.strip().lower()
-        if command == "":
-            continue
-        elif command.startswith("exit"):
-            break
-        elif command in lists:
-            thislist = lists[command]
-            thislist.print()
-        elif command == "new":
-            name = input("name: ") #TODO multiple add
-            thistask = Task(name, [alltasks])
-            for i in range(1, len(args)):
-                try:
-                    lists[args[i]].addtask(thistask)
-                except KeyError:
-                    print("No list named", args[i])
-        elif command == "task":
-            if len(args) > 1: #pick from list
-                try:
-                    thistask = thislist[int(args[1])]
-                except:
-                    print("what is", args[1])
-            if thistask is None:
-                print("None")
-            else:
-                print(thistask, "in", list(thistask.lists))
-        elif command == "add":
-            for i in range(1, len(args)):
-                try:
-                    lists[args[i]].addtask(thistask)
-                except KeyError:
-                    print("No list named", args[i])
-        elif command == "done":
-            thistask.done = datetime.now()
-        elif command == "undone":
-            thistask.done = False
-        elif command == "clean":
-            if len(args) > 1 and args[1] == "all":
-                for l in lists.values():
-                    l.clean(expire_hours=0)
-            else:
-                for l in lists.values():
-                    l.clean()
-        elif command == "due":
-            #TODO
-            pass
-        elif command == "remove":
-            print(thistask)
-            if len(args) > 1:
-                removelist = [lists[l] for l in args[1:] if l in lists]
-            else:
-                removelist = list(thistask.lists.values())
-            for l in removelist:
-                if l.removetask(thistask):
-                    print("REMOVED from", l.name)
-        alltasks.save()
+lists = loadSavedLists()
+try:
+    print("Tracking", len(lists["alltasks"]))
+    thislist = lists["alltasks"]
+except:
+    print("Couldn't load alltasks")
+    thislist = None
+thistask = None
+        
+def UI_action(args):
+    command = args[0] if len(args) > 0 else "" #command is first, the rest of the args are available if needed
+    command = command.strip().lower()
+    global thistask, thislist
+    if command == "":
+        return
+    elif command.startswith("exit"):
+        return True
+    elif command in lists:
+        thislist = lists[command]
+        UI_action.thislist = thislist
+        thislist.print()
+    elif command == "new":
+        name = input("name: ") #TODO multiple add
+        thistask = Task(name, [])
+        UI_action.thistask = thistask
+        if len(args) == 1:
+            args.append("alltasks")
+        for i in range(1, len(args)):
+            try:
+                lists[args[i]].addtask(thistask)
+            except KeyError:
+                print("No list named", args[i])
+    elif command == "task":
+        if len(args) > 1: #pick from list
+            try:
+                thistask = thislist[int(args[1])]
+            except:
+                print("what is", args[1])
+        if thistask is None:
+            print("None")
+        else:
+            print(thistask, "in", list(thistask.lists))
+    elif command == "add":
+        for i in range(1, len(args)):
+            try:
+                lists[args[i]].addtask(thistask)
+            except KeyError:
+                print("No list named", args[i])
+    elif command == "done":
+        thistask.done = datetime.now()
+        thistask.save()
+    elif command == "undone":
+        thistask.done = False
+        thistask.save()
+    elif command == "clean":
+        if len(args) > 1 and args[1] == "all":
+            for l in lists.values():
+                l.clean(expire_hours=0)
+        else:
+            for l in lists.values():
+                l.clean()
+    elif command == "due":
+        #TODO
+        pass
+    elif command == "remove":
+        print(thistask)
+        if len(args) > 1:
+            removelist = [lists[l] for l in args[1:] if l in lists]
+        else:
+            removelist = list(thistask.lists.values())
+        for l in removelist:
+            if l.removetask(thistask):
+                print("REMOVED from", l.name)
+
 
 if __name__ == '__main__':
-    main()
+    while True:
+        args = input(">>> ").split()
+        if UI_action(args):
+            break
