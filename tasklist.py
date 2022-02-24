@@ -24,6 +24,9 @@ class Task:
         self.duedate = duedate
         self.done = False
         self.recurring = recurring
+        
+    def save(self):
+        list(self.lists.values())[0].save()
     
     def __str__(self):
         return ("DONE " if self.done else "") + self.name + ("" if self.desc is None else " "+ self.desc)
@@ -75,11 +78,15 @@ class Tasklist:
         return False
     
     def print(self):
-        for i in range(len(self)):
-            print(i, self[i].__str__())
+        for i in range(len(self)): #print done tasks first
+            if self[i].done:
+                print(i, self[i].__str__())
+        for i in range(len(self)): 
+            if not self[i].done:
+                print(i, self[i].__str__())
             
     def clean(self, expire_hours = 12):
-        cleandate = datetime.now() - timedelta(hours=-expire_hours)
+        cleandate = datetime.now() - timedelta(hours = expire_hours)
         i = 0
         while i < len(self):
             if self[i].done and self[i].done < cleandate:
@@ -155,7 +162,7 @@ except:
 thistask = None
         
 def UI_action(args):
-    command = args[0] if len(args) > 0 else "" #command is first, the rest of the args are available if needed
+    command = args[0] if len(args) > 0 else ""
     command = command.strip().lower()
     global thistask, thislist
     if command == "":
@@ -164,12 +171,12 @@ def UI_action(args):
         return True
     elif command in lists:
         thislist = lists[command]
-        UI_action.thislist = thislist
         thislist.print()
     elif command == "new":
         name = input("name: ") #TODO multiple add
+        if len(name) == 0:
+            return
         thistask = Task(name, [])
-        UI_action.thistask = thistask
         if len(args) == 1:
             args.append("alltasks")
         for i in range(1, len(args)):
