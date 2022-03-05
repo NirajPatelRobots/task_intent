@@ -3,12 +3,12 @@
 Created Feb 2022
 
 @author: Niraj
-#TODO:
+TODO:
     due date
-    recurring tasks
+    recurring task scheduling
+    subtasks
     server controllable from phone
     voice control (cool)
-
 """
 import pickle
 from os.path import exists
@@ -26,10 +26,17 @@ class Task:
         self.recurring = recurring
         
     def save(self):
-        list(self.lists.values())[0].save()
+        for l in self.lists:
+            l.save(False)
     
     def __str__(self):
-        return ("DONE " if self.done else "") + self.name + ("" if self.desc is None else " "+ self.desc)
+        if self.recurring:
+            return self.name \
+                   + (" (LAST: {} days)".format((datetime.now() - self.done).days) if self.done else "") \
+                   + ("" if self.desc is None else " "+ self.desc)
+            
+        return ("DONE " if self.done else "") \
+               + self.name + ("" if self.desc is None else " "+ self.desc)
     def __getstate__(self):
         state = self.__dict__.copy()
         state['lists'] = list(state["lists"].keys())
@@ -79,17 +86,17 @@ class Tasklist:
     
     def print(self):
         for i in range(len(self)): #print done tasks first
-            if self[i].done:
-                print(i, self[i].__str__())
+            if self[i].done and not self[i].recurring:
+                print(i, str(self[i]))
         for i in range(len(self)): 
-            if not self[i].done:
-                print(i, self[i].__str__())
+            if not self[i].done or self[i].recurring:
+                print(i, str(self[i]))
             
     def clean(self, expire_hours = 12):
         cleandate = datetime.now() - timedelta(hours = expire_hours)
         i = 0
         while i < len(self):
-            if self[i].done and self[i].done < cleandate:
+            if self[i].done and not self[i].recurring and self[i].done < cleandate:
                 self.removetask(self[i])
             else:
                 i += 1
@@ -104,11 +111,11 @@ class Tasklist:
         else:
             return None
     
-    def save(self):
+    def save(self, chainparent = True):
         if self.parent is None:
             with open(self.name + ".tasklist", "wb") as file:
                 pickle.dump(self.tasks, file)
-        else:
+        elif chainparent:
             self.parent.save()
     
     def __getitem__(self, key):
@@ -190,6 +197,9 @@ def UI_action(args):
                 thistask = thislist[int(args[1])]
             except:
                 print("what is", args[1])
+            else:
+                if len(args) > 2:
+                    UI_action(args[2:])
         if thistask is None:
             print("None")
         else:
@@ -205,6 +215,9 @@ def UI_action(args):
         thistask.save()
     elif command == "undone":
         thistask.done = False
+        thistask.save()
+    elif command == "recurring":
+        thistask.recurring = True
         thistask.save()
     elif command == "clean":
         if len(args) > 1 and args[1] == "all":
