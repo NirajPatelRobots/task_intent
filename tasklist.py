@@ -4,11 +4,15 @@ Created Feb 2022
 
 @author: Niraj
 TODO:
+    settings instructions
     due date
     recurring task scheduling
     subtasks
     server controllable from phone
     voice control (cool)
+    rename
+    Share tasks between unconnected lists
+    recent recurring tasks show hours
 """
 import pickle
 from os.path import exists
@@ -26,8 +30,9 @@ class Task:
         self.recurring = recurring
         
     def save(self):
-        for l in self.lists:
-            l.save(False)
+        for l in self.lists.values():
+            if l is not None:
+                l.save(False)
     
     def __str__(self):
         if self.recurring:
@@ -181,7 +186,7 @@ def UI_action(args):
         thislist.print()
     elif command == "new":
         name = input("name: ") #TODO multiple add
-        if len(name) == 0:
+        if len(name) == 0: #TODO check already exists
             return
         thistask = Task(name, [])
         if len(args) == 1:
