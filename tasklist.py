@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created Feb 2022
@@ -13,9 +14,10 @@ TODO:
     rename
     Share tasks between unconnected lists
     recent recurring tasks show hours
+    remote stored lists
 """
 import pickle
-from os.path import exists
+from os.path import exists, join, dirname
 from datetime import datetime, timedelta
 
 class Task:
@@ -110,15 +112,16 @@ class Tasklist:
     @staticmethod
     def load(name):
         """static method that returns the Tasklist saved at filename or None on fail"""
-        if exists(name + ".tasklist"):
-            with open(name + ".tasklist", "rb") as file:
+        filename = join(dirname(__file__), name + ".tasklist")
+        if exists(filename):
+            with open(filename, "rb") as file:
                 return Tasklist(name, loaded_list = pickle.load(file))
         else:
             return None
     
     def save(self, chainparent = True):
         if self.parent is None:
-            with open(self.name + ".tasklist", "wb") as file:
+            with open(join(dirname(__file__), self.name + ".tasklist"), "wb") as file:
                 pickle.dump(self.tasks, file)
         elif chainparent:
             self.parent.save()
@@ -138,15 +141,16 @@ class Tasklist:
 
 def loadSavedLists():
     lists = {}
-    if not exists("settings.settings"):
+    settingsfilename = join(dirname(__file__), "settings.settings")
+    if not exists(settingsfilename):
         ret = input("No saved settings were found. Create new default one and erase saved lists y/n? ").lower()
         if ret == "y":
-            with open("settings.settings", 'w') as settings:
+            with open(settingsfilename) as settings:
                 settings.write("list alltasks \n" + "list todo parent alltasks \n\n" +"list shopping\n")
             lists["alltasks"] = Tasklist("alltasks")
             lists["shopping"] = Tasklist("shopping")
         return lists
-    with open("settings.settings") as settings:
+    with open(settingsfilename) as settings:
         for line in settings:
             words = line.split()
             if len(words) > 1 and words[0] == "list":
