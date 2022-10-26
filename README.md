@@ -29,7 +29,11 @@ DONE dishes in ['today', 'todo', 'alltasks']
 name: write task_intent instructions
 >>>task
 write task_intent instructions in ['today', 'todo', 'alltasks']
+>>> task 0 remove today
+REMOVED from today
+DONE lazy vacuum room in ['todo', 'alltasks']
 ```
-Once a task is selected, use `add [listname]`, `done`, `undone`, or `remove [listname]` to change it.
+After a task is selected, use `add [listname]`, `done`, `undone`, or `remove [listname]` to change it. 
+You can do this on the same line as a task selection or at any time until another task is selected.
 
 `clean` will remove all tasks that have been done longer than 12 hours, and `clean all` will remove all done tasks.

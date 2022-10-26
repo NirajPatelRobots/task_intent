@@ -5,33 +5,37 @@ Created Feb 2022
 
 @author: Niraj
 TODO:
-    settings instructions
+    backup
     due date
     recurring task scheduling
     subtasks
-    server controllable from phone
-    voice control (cool)
     rename
     Share tasks between unconnected lists
     recent recurring tasks show hours
-    remote stored lists
+    settings list filepath
+    figure out when to save
+    restructure loadSavedLists
+    be more careful when loading pickle
 """
+from __future__ import annotations
 import pickle
 from os.path import exists, join, dirname
 from datetime import datetime, timedelta
+from typing import List, Dict, Any
+
 
 class Task:
-    def __init__(self, name, parentlists, desc=None, duedate=None, recurring = False):
-        self.name = name.strip()
-        self.desc = desc
-        self.lists = {}
+    def __init__(self, name: str, parentlists: List, desc: str = None, duedate=None, recurring=False):
+        self.name: str = name.strip()
+        self.desc: str = desc
+        self.duedate: datetime = duedate
+        self.done: datetime = False
+        self.recurring: bool = recurring
+        self.lists: Dict[str, Tasklist] = {}
         for l in parentlists:
             l.addtask(self)
-        self.duedate = duedate
-        self.done = False
-        self.recurring = recurring
         
-    def save(self):
+    def save_lists(self):
         for l in self.lists.values():
             if l is not None:
                 l.save(False)
@@ -41,19 +45,21 @@ class Task:
             return self.name \
                    + (" (LAST: {} days)".format((datetime.now() - self.done).days) if self.done else "") \
                    + ("" if self.desc is None else " "+ self.desc)
-            
         return ("DONE " if self.done else "") \
                + self.name + ("" if self.desc is None else " "+ self.desc)
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        state['lists'] = list(state["lists"].keys())
+
+    def __getstate__(self) -> Dict[str, Any]:
+        state = {"name": self.name, "desc": self.desc, "duedate": self.duedate, "recurring": self.recurring,
+                 "done": self.done, 'lists': list(self.lists.keys())}
         return state
+
     def __setstate__(self, state):
         self.__dict__.update(state)
         self.lists = {n: None for n in self.lists}
-    
+
+
 class Tasklist:
-    def __init__(self, name, parent = None, loaded_list = None):
+    def __init__(self, name: str, parent: Tasklist = None, loaded_list: List[Task] = None):
         """if parent is not None, this tasklist will inherit all the tasks from its parent that have this task's name in their list of lists.
         loaded_list is the list of tasks loaded from a saved pickle file"""
         self.name = name
@@ -61,21 +67,21 @@ class Tasklist:
         self.parent = parent
         if loaded_list is not None:
             for task in loaded_list:
-                newtask = Task(task.name, [], desc=task.desc, duedate=task.duedate, recurring = task.recurring)
-                newtask.lists = task.lists
-                newtask.done = task.done
-                self.addtask(newtask)
-        if not parent is None:
+                if type(task) is Task:
+                    self.addtask(task)
+                else:
+                    print("couldn't add to list:", task)
+        if parent is not None:
             for task in parent:
                 if self.name in task.lists:
                     self.addtask(task)
     
-    def newtask(self, name, desc = None, duedate = None, recurring = False):
+    def newtask(self, name: str, desc: str = None, duedate = None, recurring = False):
         self.addtask(Task(name, [self], desc, duedate, recurring))
         self.save()
     
-    def addtask(self, task):
-        if not task in self.tasks:
+    def addtask(self, task: Task):
+        if task not in self.tasks:
             self.tasks.append(task)
             task.lists[self.name] = self
             if self.parent is not None:
@@ -83,7 +89,7 @@ class Tasklist:
             else:
                 self.save()
     
-    def removetask(self, task):
+    def removetask(self, task: Task):
         if task in self.tasks:
             self.tasks.remove(task)
             del task.lists[self.name]
@@ -92,15 +98,15 @@ class Tasklist:
         return False
     
     def print(self):
-        for i in range(len(self)): #print done tasks first
+        for i in range(len(self)):  # print done tasks first
             if self[i].done and not self[i].recurring:
                 print(i, str(self[i]))
         for i in range(len(self)): 
             if not self[i].done or self[i].recurring:
                 print(i, str(self[i]))
             
-    def clean(self, expire_hours = 12):
-        cleandate = datetime.now() - timedelta(hours = expire_hours)
+    def clean(self, expire_hours: int = 12):
+        cleandate = datetime.now() - timedelta(hours=expire_hours)
         i = 0
         while i < len(self):
             if self[i].done and not self[i].recurring and self[i].done < cleandate:
@@ -110,7 +116,7 @@ class Tasklist:
         self.save()
 
     @staticmethod
-    def load(name):
+    def load(name: str):
         """static method that returns the Tasklist saved at filename or None on fail"""
         filename = join(dirname(__file__), name + ".tasklist")
         if exists(filename):
@@ -119,7 +125,7 @@ class Tasklist:
         else:
             return None
     
-    def save(self, chainparent = True):
+    def save(self, chainparent: bool = True):
         if self.parent is None:
             with open(join(dirname(__file__), self.name + ".tasklist"), "wb") as file:
                 pickle.dump(self.tasks, file)
@@ -139,6 +145,7 @@ class Tasklist:
             return self[self._index - 1]
         raise StopIteration
 
+
 def loadSavedLists():
     lists = {}
     settingsfilename = join(dirname(__file__), "settings.settings")
@@ -153,7 +160,9 @@ def loadSavedLists():
     with open(settingsfilename) as settings:
         for line in settings:
             words = line.split()
-            if len(words) > 1 and words[0] == "list":
+            if len(words) <= 1 or words[0].startswith('#'):
+                continue
+            if words[0] == "list":
                 newname = words[1]
                 if len(words) > 3 and words[2] == "parent":
                     parentname = words[3]
@@ -164,93 +173,11 @@ def loadSavedLists():
                 else:
                     lists[newname] = Tasklist.load(newname)
                     if lists[newname] is None:
-                        print("Load error: Couldn't find saved list", newname)
+                        ret = input("Couldn't find saved list "+ newname +", make new saved list y/n? ")
+                        if ret.lower() == "y":
+                            lists[newname] = Tasklist(newname)
+                            lists[newname].save()
     return lists
 
 
-lists = loadSavedLists()
-try:
-    print("Tracking", len(lists["alltasks"]))
-    thislist = lists["alltasks"]
-except:
-    print("Couldn't load alltasks")
-    thislist = None
-thistask = None
-        
-def UI_action(args):
-    command = args[0] if len(args) > 0 else ""
-    command = command.strip().lower()
-    global thistask, thislist
-    if command == "":
-        return
-    elif command.startswith("exit"):
-        return True
-    elif command in lists:
-        thislist = lists[command]
-        thislist.print()
-    elif command == "new":
-        name = input("name: ") #TODO multiple add
-        if len(name) == 0: #TODO check already exists
-            return
-        thistask = Task(name, [])
-        if len(args) == 1:
-            args.append("alltasks")
-        for i in range(1, len(args)):
-            try:
-                lists[args[i]].addtask(thistask)
-            except KeyError:
-                print("No list named", args[i])
-    elif command == "task":
-        if len(args) > 1: #pick from list
-            try:
-                thistask = thislist[int(args[1])]
-            except:
-                print("what is", args[1])
-            else:
-                if len(args) > 2:
-                    UI_action(args[2:])
-        if thistask is None:
-            print("None")
-        else:
-            print(thistask, "in", list(thistask.lists))
-    elif command == "add":
-        for i in range(1, len(args)):
-            try:
-                lists[args[i]].addtask(thistask)
-            except KeyError:
-                print("No list named", args[i])
-    elif command == "done":
-        thistask.done = datetime.now()
-        thistask.save()
-    elif command == "undone":
-        thistask.done = False
-        thistask.save()
-    elif command == "recurring":
-        thistask.recurring = True
-        thistask.save()
-    elif command == "clean":
-        if len(args) > 1 and args[1] == "all":
-            for l in lists.values():
-                l.clean(expire_hours=0)
-        else:
-            for l in lists.values():
-                l.clean()
-    elif command == "due":
-        #TODO
-        pass
-    elif command == "remove":
-        print(thistask)
-        if len(args) > 1:
-            removelist = [lists[l] for l in args[1:] if l in lists]
-        else:
-            removelist = list(thistask.lists.values())
-        for l in removelist:
-            if l.removetask(thistask):
-                print("REMOVED from", l.name)
 
-
-if __name__ == '__main__':
-    while True:
-        args = input(">>> ").split()
-        if UI_action(args):
-            break
